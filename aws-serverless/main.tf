@@ -29,6 +29,31 @@ data "archive_file" "lambda_function" {
   output_path = "${path.module}/lambda-function.zip"
 }
 
+resource "aws_dynamodb_table" "serverless-dynamodb-table" {
+  name           = "AWSServerlessTerraform"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "UserId"
+  range_key      = "GameTitle"
+
+  attribute {
+    name = "UserId"
+    type = "S"
+  }
+
+  attribute {
+    name = "GameTitle"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "TimeToExist"
+    enabled        = false
+  }
+
+  tags = {
+    Name = "Terraform AWS Serverless"
+  }
+}
 
 resource "aws_s3_object" "lambda_function" {
 
@@ -49,8 +74,8 @@ resource "aws_lambda_function" "lambda_function" {
   s3_bucket = aws_s3_bucket.terraform-bucket.id
   s3_key    = aws_s3_object.lambda_function.key
 
-  runtime = "nodejs18.x"
-  handler = "function.handler"
+  runtime = "python3.7"
+  handler = "app.lambda_handler"
 
   source_code_hash = data.archive_file.lambda_function.output_base64sha256
 
@@ -94,10 +119,37 @@ resource "aws_iam_role" "lambda_exec" {
   }
 }
 
+resource "aws_iam_policy" "dynamoDBLambdaPolicy" {
+  name = "serverless_lambda"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+        Effect = "Allow"
+        Action = [ "dynamodb:*" ]
+        Sid    = "LambdaAccessDynamo"
+        Resource =[
+          aws_dynamodb_table.serverless-dynamodb-table.arn
+        ] 
+      }
+    ]
+  })
+
+  tags = {
+    Name = "Terraform AWS Serverless"
+  }
+}
+
+
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
+}
+
+resource "aws_iam_role_policy_attachment" "lambda-policy-attachment" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = aws_iam_policy.dynamoDBLambdaPolicy.arn
 }
 
 
@@ -160,3 +212,13 @@ resource "aws_lambda_permission" "api_gw" {
 
   source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
 }
+
+# resource "aws_lambda_permission" "dynamodb" {
+#   statement_id  = "AllowLambdaAccessDynamo"
+#   action        = "dynamodb:GetItem"
+#   function_name = aws_lambda_function.lambda_function.function_name
+#   resource     = "${dynamodb_arn}"
+
+#   source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+# }
+

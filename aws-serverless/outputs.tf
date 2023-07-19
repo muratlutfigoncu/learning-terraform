@@ -9,3 +9,9 @@ output "base_url" {
 
   value = aws_apigatewayv2_stage.lambda.invoke_url
 }
+
+output "dynamodb_arn" {
+  description = "ARN of DynamoDB"
+
+  value = aws_dynamodb_table.serverless-dynamodb-table.arn
+}
